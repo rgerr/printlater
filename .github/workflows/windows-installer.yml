@@ -1,0 +1,91 @@
+name: Windows installer
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Version
+        id: ver
+        run: |
+          $v = (python -c "import printlater; print(printlater.__version__)").Trim()
+          if ("${{ github.event_name }}" -eq "release" -and "${{ github.event.release.tag_name }}" -ne "v$v") {
+            throw "Release tag ${{ github.event.release.tag_name }} does not match version $v"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Tests
+        run: |
+          python -m pip install --upgrade pip pytest pyinstaller
+          python -m pytest -q tests
+
+      - name: Build PrintLater.exe
+        run: pyinstaller --noconfirm --clean --windowed --name PrintLater --hidden-import printlater.gui run.py
+
+      - name: Build installer
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+      - name: Smoke test (silent install, menu entry, delayed file, uninstall)
+        run: |
+          $setup = (Get-ChildItem dist\PrintLater-Setup-*.exe).FullName
+          Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          $exe = "$env:LOCALAPPDATA\Programs\PrintLater\PrintLater.exe"
+          if (-not (Test-Path $exe)) { throw "PrintLater.exe not installed" }
+          if (-not (Test-Path "$env:LOCALAPPDATA\PrintLater\config.toml")) { throw "config.toml not created" }
+          $key = 'HKCU:\Software\Classes\SystemFileAssociations\.3mf\shell\PrintLater\command'
+          $cmd = (Get-ItemProperty $key).'(default)'
+          if ($cmd -ne "`"$exe`" plan `"%1`"") { throw "Unexpected menu command: $cmd" }
+
+          $dir = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\smoke"
+          $job = Join-Path $dir 'job.gcode.3mf'
+          python -c "import sys; sys.path.insert(0, 'tests'); from test_printlater import sliced_file; from pathlib import Path; sliced_file(Path(sys.argv[1]))" $job
+          $when = (Get-Date).AddHours(3).ToString('yyyy-MM-dd HH:mm')
+          $p = Start-Process $exe -ArgumentList @('make', "`"$job`"", '--at', "`"$when`"") -Wait -PassThru
+          Get-Content "$env:LOCALAPPDATA\PrintLater\printlater.log"
+          if ($p.ExitCode -ne 0) { throw "make failed with exit code $($p.ExitCode)" }
+          $out = Get-ChildItem $dir -Filter 'job_start*.gcode.3mf'
+          if (-not $out) { throw "No delayed file written" }
+          python -c "import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); g = z.read('Metadata/plate_1.gcode').decode(); assert 'PRINTLATER DELAYED START' in g and 'M400 S90' in g; print('delay block present')" $out.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Delay block missing" }
+
+          Start-Process "$env:LOCALAPPDATA\Programs\PrintLater\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait
+          # the uninstaller relaunches itself from a temp copy, so -Wait returns early
+          for ($i = 0; $i -lt 60 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 1 }
+          Start-Sleep -Seconds 2
+          if (Test-Path $key) { throw "Menu entry still present after uninstall" }
+          if (Test-Path $exe) { throw "PrintLater.exe still present after uninstall" }
+          if (-not (Test-Path "$env:LOCALAPPDATA\PrintLater\config.toml")) { throw "Uninstall removed the settings" }
+          "Smoke test passed"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PrintLater-Setup-${{ steps.ver.outputs.version }}
+          path: dist/PrintLater-Setup-*.exe
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" (Get-ChildItem dist\PrintLater-Setup-*.exe).FullName --clobber

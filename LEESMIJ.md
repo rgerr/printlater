@@ -5,6 +5,14 @@ Bambu Handy en printen via de cloud blijven werken. Geen Developer Mode, geen fi
 
 *Onofficieel hulpmiddel, niet verbonden aan Bambu Lab.*
 
+## Installeren
+
+Download `PrintLater-Setup-<versie>.exe` bij de
+[nieuwste release](https://github.com/rgerr/printlater/releases/latest) en start het. Er zijn geen
+beheerrechten nodig. De installer is niet ondertekend, dus Windows SmartScreen kan waarschuwen:
+kies *Meer informatie* → *Toch uitvoeren*. Verwijderen gaat via Instellingen → Apps; je
+instellingen blijven bewaard.
+
 ## Gebruik
 
 1. Bambu Studio: slicen → pijltje naast *Printplaat* → **Exporteer plate sliced bestand**.
@@ -23,4 +31,4 @@ Annuleren kan in Handy, Bambu Studio of op de printer.
   Home Assistant-blueprint die dat automatisch doet.
 - Stroomuitval tijdens het wachten annuleert de opdracht.
 
-Installatie en details: zie README.md.
+Home Assistant, tijdsberekening en details: zie README.md.

@@ -164,3 +164,28 @@ def test_no_ai_references_in_repo():
         if p.is_file() and p.suffix in {".py", ".md", ".toml", ".yaml", ".ps1", ".txt"} and "test_printlater" not in p.name:
             text = p.read_text(encoding="utf-8", errors="ignore").lower()
             assert not any(b in text for b in bad), f"{p.name} contains a forbidden reference"
+
+
+# ------------------------------------------------------------------ packaged exe
+def test_menu_command_script_and_frozen(monkeypatch):
+    from printlater import winsys
+    cmd, icon = winsys.menu_command()
+    assert cmd.endswith('"run.py" plan "%1"') or 'run.py" plan "%1"' in cmd
+    monkeypatch.setattr(winsys, "FROZEN", True)
+    monkeypatch.setattr(sys, "executable", r"C:\Users\x\AppData\Local\Programs\PrintLater\PrintLater.exe")
+    cmd, icon = winsys.menu_command()
+    assert cmd == r'"C:\Users\x\AppData\Local\Programs\PrintLater\PrintLater.exe" plan "%1"'
+    assert icon.endswith("PrintLater.exe")
+
+
+def test_no_console_writes_log(tmp_path, monkeypatch):
+    import run
+    monkeypatch.setattr(run, "HAS_CONSOLE", False)
+    src = sliced_file(tmp_path / "job.gcode.3mf")
+    when = (datetime.now() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M")
+    assert run.main(["make", str(src), "--at", when]) == 0
+    from printlater.config import data_dir
+    log = (data_dir() / "printlater.log").read_text(encoding="utf-8")
+    assert "_start" in log and "delay" in log
+    assert run.main(["bogus"]) == 2
+    assert "invalid command line" in (data_dir() / "printlater.log").read_text(encoding="utf-8")

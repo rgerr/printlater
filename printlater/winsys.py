@@ -60,6 +60,9 @@ def ui_language(setting: str = "") -> str:
 MENU_KEY = r"Software\Classes\SystemFileAssociations\.3mf\shell\PrintLater"
 
 
+FROZEN = bool(getattr(sys, "frozen", False))  # running as the packaged PrintLater.exe
+
+
 def pythonw() -> str:
     exe = Path(sys.executable)
     w = exe.with_name("pythonw.exe")
@@ -70,13 +73,21 @@ def main_script() -> str:
     return str(Path(__file__).resolve().parent.parent / "run.py")
 
 
+def menu_command() -> tuple[str, str]:
+    """(command line, icon) for the Explorer entry: the exe itself, or pythonw + run.py."""
+    if FROZEN:
+        return f'"{sys.executable}" plan "%1"', sys.executable
+    return f'"{pythonw()}" "{main_script()}" plan "%1"', pythonw()
+
+
 def install_context_menu(label: str) -> None:
     import winreg
+    command, icon = menu_command()
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, MENU_KEY) as k:
         winreg.SetValueEx(k, None, 0, winreg.REG_SZ, label)
-        winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, pythonw())
+        winreg.SetValueEx(k, "Icon", 0, winreg.REG_SZ, icon)
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, MENU_KEY + r"\command") as k:
-        winreg.SetValueEx(k, None, 0, winreg.REG_SZ, f'"{pythonw()}" "{main_script()}" plan "%1"')
+        winreg.SetValueEx(k, None, 0, winreg.REG_SZ, command)
 
 
 def uninstall_context_menu() -> None:

@@ -23,12 +23,26 @@ of the calculated time; the first layer began about 8 minutes later.
 
 ## Requirements
 
-- Windows 10/11 with Python 3.11 or newer
+- Windows 10/11
 - Bambu Studio
 - A sliced plate exported with **Export plate sliced file** (a `.gcode.3mf`)
 - Optional: Home Assistant with the Bambu Lab integration (ha-bambulab)
 
 ## Install
+
+Download `PrintLater-Setup-<version>.exe` from the
+[latest release](https://github.com/rgerr/printlater/releases/latest) and run it. It installs for
+your Windows user only (no administrator rights) and adds **Print later...** to the right-click
+menu of `.3mf` files. Uninstall via Settings → Apps; your settings are kept.
+
+The installer is not code-signed, so Windows SmartScreen may show "Windows protected your PC".
+Choose *More info* → *Run anyway*. The installer is built from this repository by the
+[Windows installer workflow](.github/workflows/windows-installer.yml), which also runs a
+silent install and uninstall test.
+
+### From source
+
+With Python 3.11 or newer installed:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -69,8 +83,10 @@ the exact expected start time once the printer has accepted it.
 
 ## Home Assistant (optional)
 
-With `homeassistant.enabled = true` in `config.toml` (store the token with `run.py set-token`,
-it is encrypted for your Windows user) PrintLater can:
+With `homeassistant.enabled = true` in `config.toml` PrintLater can do more. Store the token
+with Start menu → PrintLater → *Set Home Assistant token* (or `run.py set-token` from source);
+it is encrypted for your Windows user. The Start menu also has *Edit settings file* and
+*Check settings*. With Home Assistant PrintLater can:
 
 - switch the printer's smart plug on before you send
 - refuse when the printer is still busy
@@ -82,6 +98,9 @@ stage idle, both target temperatures 0 for 45 s), keeps the chamber light off an
 you when waiting begins and when the print really starts.
 
 ## Command line
+
+`PrintLater.exe` (installed) and `run.py` (source) take the same commands. The exe has no
+console: its output goes to `printlater.log` in `%LOCALAPPDATA%\PrintLater`.
 
 ```text
 run.py plan <file.gcode.3mf>                          dialog (same as the right-click entry)

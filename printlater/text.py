@@ -21,6 +21,9 @@ T = {
         "no_confirm": "No confirmation from Home Assistant. If you sent the job, the printer starts about {start}.",
         "ha_fail": "Home Assistant not reachable: {err}\nContinuing without it.",
         "err": "Not planned",
+        "about": "PrintLater {ver}\n\nRight-click a sliced .gcode.3mf file and choose \"Print later...\".\nWindows 11: the entry is under \"Show more options\".\n\nSettings: {cfg}",
+        "token_prompt": "Home Assistant long-lived access token:",
+        "token_saved": "Token stored, encrypted for this Windows user.",
     },
     "nl": {
         "menu": "Print inplannen...",
@@ -42,6 +45,9 @@ T = {
         "no_confirm": "Geen bevestiging van Home Assistant. Als je hebt verstuurd, begint de printer rond {start}.",
         "ha_fail": "Home Assistant niet bereikbaar: {err}\nIk ga verder zonder.",
         "err": "Niet ingepland",
+        "about": "PrintLater {ver}\n\nKlik met rechts op een gesliced .gcode.3mf-bestand en kies \"Print inplannen...\".\nWindows 11: de optie staat onder \"Meer opties weergeven\".\n\nInstellingen: {cfg}",
+        "token_prompt": "Home Assistant long-lived access token:",
+        "token_saved": "Token opgeslagen, versleuteld voor deze Windows-gebruiker.",
     },
 }
 
