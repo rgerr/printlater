@@ -1,0 +1,27 @@
+# PrintLater settings. install.ps1 copies this to %LOCALAPPDATA%\PrintLater\config.toml.
+
+bambu_studio = ""        # path to bambu-studio.exe; empty = auto-detect
+output_dir = ""          # where delayed files are saved; empty = next to the original export
+language = ""            # "en" or "nl"; empty = follow Windows
+
+[timing]
+default_time = "07:30"   # suggested time in the dialog
+meaning = "warmup"       # "warmup": printer starts heating/homing at the chosen time
+                         # "printing": first layer starts at the chosen time
+prep_minutes = 8         # printer preparation before the first layer (measured ~8 min on a P2S
+                         # with filament load and auto levelling); only used for "printing"
+send_lead_seconds = 60   # expected time from closing the dialog to pressing Send
+transfer_seconds = 20    # Send -> printer starts running the file (15-25 s measured)
+
+[homeassistant]
+enabled = false          # optional; the token is stored with: run.py set-token
+url = "http://homeassistant.local:8123"
+verify_ssl = true
+# Entity IDs from the Bambu Lab integration (ha-bambulab). Leave empty what you don't have.
+plug = ""                # switch.* powering the printer; switched on when needed
+online = ""              # binary_sensor.<printer>_online
+print_status = ""        # sensor.<printer>_print_status
+task_name = ""           # sensor.<printer>_task_name
+planned_flag = ""        # input_boolean.* switched on while a delayed start is planned
+planned_start = ""       # input_datetime.* receives the expected start time
+boot_wait_seconds = 120

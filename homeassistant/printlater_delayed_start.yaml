@@ -1,0 +1,86 @@
+blueprint:
+  name: PrintLater - delayed start helper (Bambu Lab)
+  description: >
+    Detects a print that is waiting for its PrintLater delayed start (job running, stage idle,
+    bed and nozzle targets 0), keeps the chamber light off while it waits and optionally
+    notifies when waiting begins and when the real start happens.
+    Works with the Bambu Lab integration (ha-bambulab); select your own printer's entities.
+  domain: automation
+  input:
+    print_status:
+      name: Print status sensor
+      selector: { entity: { domain: sensor } }
+    stage:
+      name: Current stage sensor
+      selector: { entity: { domain: sensor } }
+    bed_target:
+      name: Target bed temperature sensor
+      selector: { entity: { domain: sensor } }
+    nozzle_target:
+      name: Target nozzle temperature sensor
+      selector: { entity: { domain: sensor } }
+    task_name:
+      name: Task name sensor
+      selector: { entity: { domain: sensor } }
+    chamber_light:
+      name: Chamber light
+      selector: { entity: { domain: light } }
+    notify_actions:
+      name: Notification (optional)
+      description: Runs when waiting begins and when the print really starts. Use {{ message }} in it.
+      default:
+        - delay: "00:00:00"
+      selector: { action: {} }
+
+mode: parallel
+max: 5
+
+trigger_variables:
+  status_e: !input print_status
+  stage_e: !input stage
+  bed_e: !input bed_target
+  nozzle_e: !input nozzle_target
+
+variables:
+  light_e: !input chamber_light
+  task_e: !input task_name
+
+triggers:
+  - trigger: template
+    id: waiting
+    value_template: >
+      {{ is_state(status_e, 'running') and states(stage_e) | lower == 'idle'
+         and states(bed_e) | float(-1) == 0 and states(nozzle_e) | float(-1) == 0 }}
+    for: "00:00:45"
+  - trigger: state
+    id: light
+    entity_id: !input chamber_light
+    to: "on"
+    for: "00:00:05"
+
+actions:
+  - variables:
+      waiting_now: >
+        {{ is_state(status_e, 'running') and states(stage_e) | lower == 'idle'
+           and states(bed_e) | float(-1) == 0 and states(nozzle_e) | float(-1) == 0 }}
+      task: "{{ states(task_e) }}"
+  - condition: "{{ waiting_now }}"
+  - action: light.turn_off
+    target: { entity_id: "{{ light_e }}" }
+  - condition: "{{ trigger.id == 'waiting' }}"
+  - variables:
+      message: "{{ task }} is waiting cold for its start time."
+  - sequence: !input notify_actions
+  # Stay with this run until the wait ends, then report how it ended.
+  - wait_for_trigger:
+      - trigger: template
+        value_template: >
+          {{ not (is_state(status_e, 'running') and states(stage_e) | lower == 'idle'
+             and states(bed_e) | float(-1) == 0 and states(nozzle_e) | float(-1) == 0) }}
+    timeout: "25:00:00"
+    continue_on_timeout: false
+  - variables:
+      message: >
+        {% if is_state(status_e, 'running') %}{{ task }} started at {{ now().strftime('%H:%M') }}.
+        {% else %}{{ task }}: delayed start ended without printing (status {{ states(status_e) }}).{% endif %}
+  - sequence: !input notify_actions
