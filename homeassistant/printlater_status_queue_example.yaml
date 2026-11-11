@@ -30,7 +30,7 @@ template:
         state: >
           {% set s = states('input_text.printlater_status') %}
           {% set n = states('input_text.printlater_job') %}
-          {% set t = as_timestamp(states('input_datetime.printlater_start'), 0) | timestamp_custom('%d-%m %H:%M') %}
+          {% set t = (state_attr('input_datetime.printlater_start', 'timestamp') or 0) | timestamp_custom('%d-%m %H:%M') %}
           {% if s == 'planned' %}{{ n }}: planned {{ t }}, not on the printer yet
           {% elif s == 'waiting' %}{{ n }}: waiting cold until {{ t }}
           {% elif s == 'started' %}{{ n }}: started
