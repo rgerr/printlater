@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.0 (2026-11-11)
+
+- Planning status in Home Assistant: job name (`plan_name`) and status (`plan_status`:
+  none, planned, waiting, started, failed).
+- Print queue in a Home Assistant to-do list (`queue_todo`): *Add to queue* in the dialog,
+  `run.py queue` and `run.py next`, Start menu entries for both.
+- No silent planning without Home Assistant: when it is enabled but unreachable, or a configured
+  entity is missing, PrintLater stops (`continue_without_ha = true` restores the old behaviour).
+- The busy message names the running job and any planned start.
+- Stops when the printer does not come online after switching the plug on.
+- No confirmation within 15 minutes: the plan is marked failed and the planned flag is cleared.
+- Example package `homeassistant/printlater_status_queue_example.yaml`.
+
 ## 1.1.0 (2026-11-01)
 
 - Windows installer (`PrintLater-Setup-1.1.0.exe`): no Python needed, per-user install, uninstall

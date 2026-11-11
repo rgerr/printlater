@@ -1,5 +1,5 @@
 ; PrintLater installer (Inno Setup 6). Installs for the current user only, no administrator rights.
-; Build: iscc /DAppVersion=1.1.0 packaging\installer.iss   (after PyInstaller has created dist\PrintLater)
+; Build: iscc /DAppVersion=1.2.0 packaging\installer.iss   (after PyInstaller has created dist\PrintLater)
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -39,6 +39,10 @@ en.Check=Check settings
 nl.Check=Instellingen controleren
 en.EditConfig=Edit settings file
 nl.EditConfig=Instellingenbestand bewerken
+en.Queue=Print queue
+nl.Queue=Printwachtrij
+en.Next=Plan next job from the queue
+nl.Next=Volgende uit de wachtrij inplannen
 
 [InstallDelete]
 ; program files of an earlier install made with install.ps1 (settings and token are kept)
@@ -50,6 +54,7 @@ Source: "..\config.example.toml"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\homeassistant\printlater_delayed_start.yaml"; DestDir: "{app}\homeassistant"; Flags: ignoreversion
+Source: "..\homeassistant\printlater_status_queue_example.yaml"; DestDir: "{app}\homeassistant"; Flags: ignoreversion
 ; settings live outside the program folder and survive updates and uninstall
 Source: "..\config.example.toml"; DestDir: "{localappdata}\PrintLater"; DestName: "config.toml"; Flags: onlyifdoesntexist uninsneveruninstall
 
@@ -57,6 +62,8 @@ Source: "..\config.example.toml"; DestDir: "{localappdata}\PrintLater"; DestName
 Name: "{group}\PrintLater"; Filename: "{app}\PrintLater.exe"
 Name: "{group}\{cm:SetToken}"; Filename: "{app}\PrintLater.exe"; Parameters: "set-token"
 Name: "{group}\{cm:Check}"; Filename: "{app}\PrintLater.exe"; Parameters: "check"
+Name: "{group}\{cm:Queue}"; Filename: "{app}\PrintLater.exe"; Parameters: "queue"
+Name: "{group}\{cm:Next}"; Filename: "{app}\PrintLater.exe"; Parameters: "next"
 Name: "{group}\{cm:EditConfig}"; Filename: "{win}\notepad.exe"; Parameters: """{localappdata}\PrintLater\config.toml"""
 
 [Run]

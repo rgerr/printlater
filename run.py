@@ -4,6 +4,8 @@ Usage:
   run.py plan <file.gcode.3mf>                     open the dialog (also via right-click)
   run.py make <file.gcode.3mf> --at "YYYY-MM-DD HH:MM" [--printing]
                                                           only write the delayed file
+  run.py queue                                     show the print queue (Home Assistant to-do list)
+  run.py next                                      open the dialog for the next job in the queue
   run.py set-token | check | install-menu | uninstall-menu
 
 The packaged PrintLater.exe takes the same commands. It has no console window, so text
@@ -15,7 +17,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from printlater import __version__, core, winsys
@@ -73,7 +75,8 @@ def _check(settings) -> str:
     if settings.homeassistant.enabled:
         ha = HA(settings.homeassistant)
         c = settings.homeassistant
-        for ent in (c.plug, c.online, c.print_status, c.task_name, c.planned_flag, c.planned_start):
+        for ent in (c.plug, c.online, c.print_status, c.task_name, c.planned_flag, c.planned_start,
+                    c.plan_name, c.plan_status, c.queue_todo):
             if ent:
                 lines.append(f"  {ent}: {ha.value(ent)}")
     else:
@@ -88,7 +91,7 @@ def main(argv=None) -> int:
     a = sub.add_parser("plan"); a.add_argument("file")
     m = sub.add_parser("make"); m.add_argument("file"); m.add_argument("--at", required=True)
     m.add_argument("--printing", action="store_true", help="time means: first layer starts")
-    for name in ("set-token", "check", "install-menu", "uninstall-menu"):
+    for name in ("queue", "next", "set-token", "check", "install-menu", "uninstall-menu"):
         sub.add_parser(name)
 
     if not argv and not HAS_CONSOLE:  # exe started without a command, e.g. from the Start menu
@@ -101,7 +104,7 @@ def main(argv=None) -> int:
             _out(f"invalid command line: {argv}")
         return int(e.code or 0)
 
-    interactive = args.cmd == "plan" or (not HAS_CONSOLE and args.cmd in ("set-token", "check"))
+    interactive = args.cmd in ("plan", "next") or (not HAS_CONSOLE and args.cmd in ("set-token", "check", "queue"))
     try:
         settings = load()
         lang = winsys.ui_language(settings.language)
@@ -115,6 +118,24 @@ def main(argv=None) -> int:
                                   meaning="printing" if args.printing else None)
             _out(f"{plan.output}\ndelay {plan.delay_s} s; send it within about "
                  f"{settings.timing.send_lead_seconds} s from now")
+            return 0
+        if args.cmd in ("queue", "next"):
+            items = HA(settings.homeassistant).queue_items()
+            if not items:
+                (_out if HAS_CONSOLE else _box)(tr(lang, "queue_empty"))
+                return 0
+            if args.cmd == "queue":
+                lines = [f"{i + 1}. {q.name} ({q.wish:%d-%m %H:%M})" if q.wish else f"{i + 1}. {q.name}"
+                         for i, q in enumerate(items)]
+                (_out if HAS_CONSOLE else _box)(tr(lang, "queue_list", items="\n".join(lines)))
+                return 0
+            nxt = items[0]
+            if not Path(nxt.file).is_file():
+                raise FileNotFoundError(tr(lang, "queue_missing", file=nxt.file))
+            soon = (datetime.now() + timedelta(minutes=5)).replace(second=0, microsecond=0)
+            target = nxt.wish if nxt.wish and nxt.wish > soon else soon
+            from printlater.gui import run
+            run(Path(nxt.file), settings, lambda: HA(settings.homeassistant), target=target, queue_uid=nxt.uid)
             return 0
         if args.cmd == "set-token":
             token = _ask_token(lang).strip()

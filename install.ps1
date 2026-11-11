@@ -19,6 +19,21 @@ if (-not (Test-Path $cfg)) { Copy-Item (Join-Path $src 'config.example.toml') $c
 else { Write-Host "Kept existing $cfg" }
 
 & $pyexe (Join-Path $app 'run.py') install-menu
+
+# Start menu: print queue and "plan next job from the queue"
+$nl = (Get-Culture).TwoLetterISOLanguageName -eq 'nl'
+$menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'PrintLater'
+New-Item -ItemType Directory -Force -Path $menu | Out-Null
+$pyw = Join-Path (Split-Path $pyexe) 'pythonw.exe'
+$sh = New-Object -ComObject WScript.Shell
+foreach ($e in @(@('queue', $(if ($nl) { 'Printwachtrij' } else { 'Print queue' })),
+                 @('next',  $(if ($nl) { 'Volgende uit de wachtrij inplannen' } else { 'Plan next job from the queue' })))) {
+    $lnk = $sh.CreateShortcut((Join-Path $menu ($e[1] + '.lnk')))
+    $lnk.TargetPath = $pyw
+    $lnk.Arguments = '"' + (Join-Path $app 'run.py') + '" ' + $e[0]
+    $lnk.WorkingDirectory = $app
+    $lnk.Save()
+}
 & $pyexe (Join-Path $app 'run.py') check
 Write-Host "`nDone. Right-click a .gcode.3mf file and choose 'Print later...'."
 Write-Host "Windows 11: the entry is under 'Show more options'."

@@ -1,0 +1,182 @@
+# PrintLater: planning status and print queue (example package for Home Assistant)
+#
+# Copy into your packages folder and replace the entity IDs with your own:
+#   sensor.my_printer_print_status / sensor.my_printer_task_name  (Bambu Lab integration)
+#   switch.printer_plug, notify.notify
+#   binary_sensor.printlater_waiting  a template binary sensor that is on while the printer
+#     waits cold (see the blueprint: running, stage idle, bed and nozzle target 0 for 45 s)
+#   input_boolean.printlater_planned / input_datetime.printlater_start  (planned_flag / planned_start)
+#   todo.print_queue  a Local To-do list
+# In PrintLater's config.toml: plan_name = "input_text.printlater_job",
+#   plan_status = "input_text.printlater_status", queue_todo = "todo.print_queue".
+
+input_text:
+  printlater_job:
+    name: "PrintLater: planned job"
+    max: 100
+    icon: mdi:printer-3d
+  printlater_status:
+    name: "PrintLater: status"
+    max: 20
+    icon: mdi:list-status
+
+template:
+  - sensor:
+      - name: "PrintLater plan"
+        unique_id: printlater_plan_overview
+        icon: >
+          {{ {'planned': 'mdi:send-clock', 'waiting': 'mdi:timer-sand', 'started': 'mdi:printer-3d-nozzle',
+              'failed': 'mdi:alert-circle'}.get(states('input_text.printlater_status'), 'mdi:calendar-blank') }}
+        state: >
+          {% set s = states('input_text.printlater_status') %}
+          {% set n = states('input_text.printlater_job') %}
+          {% set t = as_timestamp(states('input_datetime.printlater_start'), 0) | timestamp_custom('%d-%m %H:%M') %}
+          {% if s == 'planned' %}{{ n }}: planned {{ t }}, not on the printer yet
+          {% elif s == 'waiting' %}{{ n }}: waiting cold until {{ t }}
+          {% elif s == 'started' %}{{ n }}: started
+          {% elif s == 'failed' %}{{ n }}: failed, not started
+          {% else %}Nothing planned{% endif %}
+        attributes:
+          status: "{{ states('input_text.printlater_status') }}"
+          job: "{{ states('input_text.printlater_job') }}"
+          start: "{{ states('input_datetime.printlater_start') }}"
+          queued: "{{ states('todo.print_queue') | int(0) }}"
+
+automation:
+  - id: printlater_status_waiting
+    alias: "PrintLater: status waiting"
+    description: "Status 'waiting' as soon as the printer waits cold for its start time."
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.printlater_waiting
+        to: "on"
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.printlater_status
+        data:
+          value: waiting
+      - if:
+          - condition: template
+            value_template: "{{ states('input_text.printlater_job') in ['', '-', 'unknown'] }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.printlater_job
+            data:
+              value: "{{ states('sensor.my_printer_task_name')[:100] }}"
+
+  - id: printlater_status_after_wait
+    alias: "PrintLater: status after the wait"
+    description: "After the wait: 'started' when the print really starts, otherwise 'failed'."
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.printlater_waiting
+        from: "on"
+        to: "off"
+    conditions:
+      - condition: state
+        entity_id: input_text.printlater_status
+        state: waiting
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.printlater_status
+        data:
+          value: >
+            {{ 'started' if is_state('sensor.my_printer_print_status', 'running') else 'failed' }}
+
+  - id: printlater_status_clear
+    alias: "PrintLater: clear status after the print"
+    description: "Back to 'none' when the planned print has finished."
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.my_printer_print_status
+        to: ["finish", "failed", "idle"]
+    conditions:
+      - condition: state
+        entity_id: input_text.printlater_status
+        state: started
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.printlater_status
+        data:
+          value: none
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.printlater_job
+        data:
+          value: "-"
+
+  - id: printlater_not_arrived
+    alias: "PrintLater: planned job did not arrive"
+    description: >
+      'failed' when a planned job is not waiting on the printer after 20 minutes, or when the
+      plug goes off while something is planned. Sends a notification.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_text.printlater_status
+        to: planned
+        for: "00:20:00"
+        id: not_sent
+      - trigger: state
+        entity_id: switch.printer_plug
+        to: "off"
+        id: plug_off
+    conditions:
+      - condition: state
+        entity_id: input_text.printlater_status
+        state: ["planned", "waiting"]
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.printlater_status
+        data:
+          value: failed
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.printlater_planned
+      - action: notify.notify
+        continue_on_error: true
+        data:
+          title: "Planned print failed"
+          message: >
+            {{ states('input_text.printlater_job') }}:
+            {{ 'the printer plug went off, the job is gone.' if trigger.id == 'plug_off'
+               else 'not on the printer after 20 minutes. Was it sent?' }}
+
+  - id: printlater_queue_next
+    alias: "PrintLater: next job in the queue"
+    description: "When a print finishes and the queue is not empty: notify with the next job."
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.my_printer_print_status
+        from: ["running", "pause"]
+        to: ["finish", "failed"]
+    conditions:
+      - condition: numeric_state
+        entity_id: todo.print_queue
+        above: 0
+    actions:
+      - action: todo.get_items
+        target:
+          entity_id: todo.print_queue
+        data:
+          status: needs_action
+        response_variable: queue
+      - variables:
+          items: "{{ queue['todo.print_queue']['items'] }}"
+          next_job: "{{ items[0].summary if items else '?' }}"
+      - action: notify.notify
+        continue_on_error: true
+        data:
+          title: "Printer free, queue: {{ items | count }}"
+          message: >
+            Next: {{ next_job }}. Clear the build plate, then choose
+            Start > PrintLater > Plan next job from the queue.

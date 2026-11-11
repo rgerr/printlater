@@ -42,6 +42,10 @@ class HomeAssistant:
     task_name: str = ""            # sensor.*_task_name
     planned_flag: str = ""         # input_boolean.* set on when a delayed start is planned (optional)
     planned_start: str = ""        # input_datetime.* receives the expected start time (optional)
+    plan_name: str = ""            # input_text.* receives the name of the planned job (optional)
+    plan_status: str = ""          # input_text.* receives none/planned/waiting/started/failed (optional)
+    queue_todo: str = ""           # todo.* list used as print queue (optional)
+    continue_without_ha: bool = False  # True: plan anyway when Home Assistant cannot be reached
     boot_wait_seconds: int = 120
 
 

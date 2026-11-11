@@ -189,3 +189,131 @@ def test_no_console_writes_log(tmp_path, monkeypatch):
     assert "_start" in log and "delay" in log
     assert run.main(["bogus"]) == 2
     assert "invalid command line" in (data_dir() / "printlater.log").read_text(encoding="utf-8")
+
+
+# ------------------------------------------------------------------ 1.2: status, strict HA, queue
+class RecHA:
+    """Records service calls and answers state requests from a dict."""
+    def __init__(self, states=None, items=None):
+        self.states, self.items, self.calls = states or {}, items or [], []
+
+    def __call__(self, method, path, body=None):
+        if method == "GET" and path.startswith("/api/states/"):
+            ent = path.rsplit("/", 1)[1]
+            if ent not in self.states:
+                from printlater.ha import HAError
+                raise HAError(f"Home Assistant GET {path}: HTTP 404")
+            return {"state": self.states[ent], "last_changed": "2026-11-11T06:00:00+00:00"}
+        if "get_items" in path:
+            return {"changed_states": [], "service_response": {body["entity_id"]: {"items": self.items}}}
+        self.calls.append((path.removeprefix("/api/services/"), body))
+        return []
+
+
+def make(rec, **cfg):
+    from printlater import ha as ham
+    from printlater.config import HomeAssistant
+    h = ham.HA(HomeAssistant(enabled=True, **cfg), token="t")
+    h._req = rec
+    return h
+
+
+def test_set_plan_status_name_and_flag():
+    rec = RecHA()
+    h = make(rec, plan_name="input_text.n", plan_status="input_text.s", planned_flag="input_boolean.f",
+             planned_start="input_datetime.d")
+    h.set_plan("planned", "x" * 150, datetime(2026, 11, 12, 7, 30))
+    services = [c[0] for c in rec.calls]
+    assert services == ["input_text/set_value", "input_text/set_value", "input_datetime/set_datetime",
+                        "input_boolean/turn_on"]
+    assert len(rec.calls[0][1]["value"]) == 100 and rec.calls[1][1]["value"] == "planned"
+    rec.calls.clear()
+    h.set_plan("failed")
+    assert [c[0] for c in rec.calls] == ["input_text/set_value", "input_boolean/turn_off"]
+    with pytest.raises(ValueError):
+        h.set_plan("bogus")
+
+
+def test_missing_entity_is_reported_clearly():
+    from printlater.ha import HAError
+    h = make(RecHA({"sensor.s": "idle"}), print_status="sensor.missing")
+    with pytest.raises(HAError, match="sensor.missing does not exist"):
+        h.check_entities()
+    h = make(RecHA({"sensor.s": "idle"}), print_status="sensor.s", plan_status="input_text.missing")
+    assert h.check_entities() == ["input_text.missing"] and h.cfg.plan_status == ""
+
+
+def test_queue_roundtrip():
+    from printlater.ha import QueueItem
+    wish = datetime(2026, 11, 12, 7, 30)
+    d = QueueItem.describe(r"C:\prints\a.gcode.3mf", wish)
+    rec = RecHA(items=[{"uid": "u1", "summary": "a", "description": d},
+                       {"uid": "u2", "summary": "b", "description": QueueItem.describe("b.gcode.3mf", None)}])
+    h = make(rec, queue_todo="todo.q")
+    items = h.queue_items()
+    assert items[0].file == r"C:\prints\a.gcode.3mf" and items[0].wish == wish and items[1].wish is None
+    h.queue_add("c", "c.gcode.3mf", None)
+    h.queue_done("u1")
+    assert rec.calls[0][0] == "todo/add_item" and "due_datetime" not in rec.calls[0][1]
+    assert rec.calls[1] == ("todo/update_item", {"entity_id": "todo.q", "item": "u1", "status": "completed"})
+
+
+def test_printer_that_stays_offline_raises(monkeypatch):
+    from printlater import ha as ham
+    rec = RecHA({"switch.p": "off", "binary_sensor.on": "off"})
+    h = make(rec, plug="switch.p", online="binary_sensor.on", boot_wait_seconds=0)
+    monkeypatch.setattr(ham.time, "sleep", lambda s: None)
+    with pytest.raises(ham.HAError, match="did not come online"):
+        h.ensure_printer_on()
+
+
+def test_texts_complete_in_both_languages():
+    from printlater.text import T
+    assert T["en"].keys() == T["nl"].keys()
+
+
+def _gui(monkeypatch):
+    """Import the dialog module; tkinter is stubbed where it is not installed (CI on Linux)."""
+    import types
+    try:
+        import tkinter.ttk  # noqa: F401
+    except ImportError:
+        tk = types.ModuleType("tkinter")
+        tk.ttk, tk.messagebox = types.ModuleType("tkinter.ttk"), types.ModuleType("tkinter.messagebox")
+        for name, mod in (("tkinter", tk), ("tkinter.ttk", tk.ttk), ("tkinter.messagebox", tk.messagebox)):
+            monkeypatch.setitem(sys.modules, name, mod)
+        monkeypatch.delitem(sys.modules, "printlater.gui", raising=False)
+    from printlater import gui
+    return gui
+
+
+def test_connect_is_strict_unless_configured(monkeypatch):
+    gui = _gui(monkeypatch)
+    from printlater.config import Settings
+    from printlater.text import tr
+    L = lambda k, **kw: tr("nl", k, **kw)  # noqa: E731
+    s = Settings()
+    s.homeassistant.enabled = True
+    s.homeassistant.print_status = "sensor.s"
+
+    def broken():
+        raise OSError("connection refused")
+    with pytest.raises(RuntimeError, match="Niet ingepland"):
+        gui.connect_ha(s, broken, L, lambda m: None)
+    warned = []
+    s.homeassistant.continue_without_ha = True
+    assert gui.connect_ha(s, broken, L, warned.append) is None and "Ik ga verder zonder" in warned[0]
+    s.homeassistant.enabled = False
+    assert gui.connect_ha(s, broken, L, warned.append) is None
+
+
+def test_busy_message_names_task_and_plan(monkeypatch):
+    gui = _gui(monkeypatch)
+    from printlater.text import tr
+    rec = RecHA({"sensor.t": "zolder_mount", "input_text.s": "waiting", "input_text.n": "vent_start0730",
+                 "input_datetime.d": "2026-11-12 07:30:00"})
+    h = make(rec, task_name="sensor.t", plan_status="input_text.s", plan_name="input_text.n",
+             planned_start="input_datetime.d")
+    msg = gui.busy_message(h, "running", lambda k, **kw: tr("nl", k, **kw), True)
+    assert "running, zolder_mount" in msg and "vent_start0730, start 2026-11-12 07:30" in msg
+    assert "In wachtrij" in msg

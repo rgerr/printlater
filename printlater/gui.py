@@ -20,11 +20,45 @@ def _dur(sec: int | None) -> str:
     return f"{h}h{m:02d}" if h else f"{m} min"
 
 
-def run(src: Path, settings: Settings, make_ha) -> None:
+def connect_ha(settings: Settings, make_ha, L, warn):
+    """Home Assistant link, or None when disabled. Raises when it is required but unreachable or a
+    core entity is missing, unless continue_without_ha is set. Missing status/queue entities are
+    skipped with a warning."""
+    hac = settings.homeassistant
+    if not hac.enabled:
+        return None
+    try:
+        ha = make_ha()
+        dropped = ha.check_entities()
+        if dropped:
+            warn(L("optional_missing", ents=", ".join(dropped)))
+        return ha
+    except Exception as e:  # noqa: BLE001
+        if hac.continue_without_ha:
+            warn(L("ha_fail", err=e))
+            return None
+        raise RuntimeError(L("ha_stop", err=e)) from e
+
+
+def busy_message(ha, state: str, L, has_queue: bool) -> str:
+    task = ha.task()
+    msg = L("busy", state=state, task=f", {task}" if task and task not in ("unknown", "unavailable") else "")
+    status, name, start = ha.current_plan()
+    if status in ("planned", "waiting") and name:
+        msg += "\n" + L("busy_plan", name=name, start=start[:16])
+    if has_queue:
+        msg += "\n\n" + L("queue_hint")
+    return msg
+
+
+def run(src: Path, settings: Settings, make_ha, target: datetime | None = None, queue_uid: str = "") -> None:
+    """Planning dialog. `target` pre-fills the time; `queue_uid` marks a queue item done once planned."""
     lang = winsys.ui_language(settings.language)
     L = lambda k, **kw: tr(lang, k, **kw)  # noqa: E731
     info = sliced.read(src)
-    target0 = core.default_target(settings.timing.default_time)
+    target0 = target if target and target > datetime.now() + timedelta(minutes=2) else \
+        core.default_target(settings.timing.default_time)
+    hac = settings.homeassistant
 
     root = tk.Tk()
     root.title(L("title"))
@@ -67,30 +101,35 @@ def run(src: Path, settings: Settings, make_ha) -> None:
     cancel_b.pack(side="right")
     plan_b = ttk.Button(btns, text=L("plan"))
     plan_b.pack(side="right", padx=6)
+    queue_b = ttk.Button(btns, text=L("queue"))
+    if hac.enabled and hac.queue_todo:
+        queue_b.pack(side="right")
 
     events: queue.Queue = queue.Queue()
 
+    def connect():
+        return connect_ha(settings, make_ha, L, lambda m: events.put(("status", m)))
+
+    def busy_text(ha, state: str) -> str:
+        return busy_message(ha, state, L, bool(hac.queue_todo))
+
     def worker(target: datetime, meaning: str):
-        ha = None
         try:
-            if settings.homeassistant.enabled:
+            ha = connect()
+            if ha:
+                busy = ha.printer_busy()
+                if busy:
+                    events.put(("error", busy_text(ha, busy)))
+                    return
                 try:
-                    ha = make_ha()
-                    busy = ha.printer_busy()
-                    if busy:
-                        events.put(("error", L("busy", state=busy)))
-                        return
                     ha.ensure_printer_on(lambda m: events.put(("status", L("power"))))
                 except Exception as e:  # noqa: BLE001
-                    events.put(("status", L("ha_fail", err=e)))
-                    ha = None
+                    events.put(("error", L("offline", err=e)))
+                    return
             plan = core.make_plan(src, target, settings, meaning=meaning)
             planned_start = target - timedelta(seconds=plan.prep_s(settings))
             if ha:
-                try:
-                    ha.record_plan(planned_start)
-                except Exception:  # noqa: BLE001
-                    pass
+                ha.set_plan("planned", plan.job_name, planned_start)
             winsys.open_in_bambu_studio(plan.output, settings.bambu_studio)
             events.put(("status", L("made") + "\n" + L("send_now", lead=settings.timing.send_lead_seconds)))
             if not ha:
@@ -99,11 +138,16 @@ def run(src: Path, settings: Settings, make_ha) -> None:
             events.put(("status2", L("waiting")))
             running = ha.wait_for_job(plan.job_name)
             if running is None:
+                try:
+                    ha.set_plan("failed")
+                except Exception:  # noqa: BLE001
+                    pass
                 events.put(("done", L("no_confirm", start=f"{planned_start:%H:%M}")))
                 return
             actual = plan.warmup_at(running)
             try:
-                ha.record_plan(actual)
+                ha.set_plan("waiting", plan.job_name, actual)
+                ha.queue_done(queue_uid)
             except Exception:  # noqa: BLE001
                 pass
             dev = (actual - planned_start).total_seconds()
@@ -112,6 +156,20 @@ def run(src: Path, settings: Settings, make_ha) -> None:
                 m, s = divmod(int(abs(dev)), 60)
                 dev_txt = L("dev", sign="+" if dev > 0 else "-", m=m, s=s)
             events.put(("done", L("accepted", run=f"{running:%H:%M:%S}", start=f"{actual:%H:%M:%S}", dev=dev_txt)))
+        except Exception as e:  # noqa: BLE001
+            events.put(("error", str(e)))
+
+    def queue_worker(target: datetime):
+        try:
+            ha = connect()
+            if not ha:
+                raise RuntimeError(L("ha_stop", err="-"))
+            name = src.name.removesuffix(".3mf").removesuffix(".gcode")
+            wish = target if target > datetime.now() else None
+            if not queue_uid:
+                ha.queue_add(name, str(src), wish)
+            events.put(("done", L("queued", name=name,
+                                  wish=L("wish", when=f"{wish:%d-%m %H:%M}") if wish else L("asap"))))
         except Exception as e:  # noqa: BLE001
             events.put(("error", str(e)))
 
@@ -126,24 +184,28 @@ def run(src: Path, settings: Settings, make_ha) -> None:
                 elif kind == "error":
                     messagebox.showerror(L("err"), msg, parent=root)
                     plan_b.state(["!disabled"])
+                    queue_b.state(["!disabled"])
                 elif kind == "done":
                     if msg:
-                        status.set(status.get().split("\n\n")[0] + "\n\n" + msg)
+                        first = status.get().split("\n\n")[0]
+                        status.set(first + "\n\n" + msg if first else msg)
                     cancel_b.configure(text=L("close"))
         except queue.Empty:
             pass
         root.after(300, poll)
 
-    def on_plan():
+    def start(fn, *extra):
         try:
             target = core.parse_when(date_v.get(), time_v.get())
         except Exception as e:  # noqa: BLE001
             messagebox.showerror(L("err"), str(e), parent=root)
             return
         plan_b.state(["disabled"])
-        threading.Thread(target=worker, args=(target, meaning_v.get()), daemon=True).start()
+        queue_b.state(["disabled"])
+        threading.Thread(target=fn, args=(target, *extra), daemon=True).start()
 
-    plan_b.configure(command=on_plan)
+    plan_b.configure(command=lambda: start(worker, meaning_v.get()))
+    queue_b.configure(command=lambda: start(queue_worker))
     root.bind("<Escape>", lambda _e: root.destroy())
     root.after(300, poll)
     root.mainloop()

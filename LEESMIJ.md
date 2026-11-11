@@ -30,5 +30,16 @@ Annuleren kan in Handy, Bambu Studio of op de printer.
 - De kamerlamp is niet met G-code te bedienen: zet hem uit in Handy, of gebruik de
   Home Assistant-blueprint die dat automatisch doet.
 - Stroomuitval tijdens het wachten annuleert de opdracht.
+- De printer houdt maar één opdracht tegelijk vast. Is hij bezig, dan weigert PrintLater.
+
+## Met Home Assistant
+
+- Wat er gepland staat zie je in HA: naam, starttijd en status (gepland, wacht koud, gestart,
+  mislukt).
+- **Wachtrij:** met *In wachtrij* zet je een print in een takenlijst in HA. Is de printer klaar,
+  dan krijg je een melding. Start > PrintLater > *Volgende uit de wachtrij inplannen* opent dan
+  het venster voor de eerste print in de rij. Versturen doe je zelf in Bambu Studio.
+- Is HA niet bereikbaar, dan plant PrintLater niet in, omdat het dan niet kan controleren of de
+  printer vrij is. Met `continue_without_ha = true` plant hij toch.
 
 Home Assistant, tijdsberekening en details: zie README.md.

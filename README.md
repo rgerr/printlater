@@ -88,10 +88,25 @@ with Start menu → PrintLater → *Set Home Assistant token* (or `run.py set-to
 it is encrypted for your Windows user. The Start menu also has *Edit settings file* and
 *Check settings*. With Home Assistant PrintLater can:
 
-- switch the printer's smart plug on before you send
-- refuse when the printer is still busy
+- switch the printer's smart plug on before you send, and stop if it does not come online
+- refuse when the printer is still busy, naming the running job and any planned start
 - set an `input_datetime` to the expected start and an `input_boolean` while a start is planned
 - report the exact expected start once the job is accepted
+- show what is planned: job name in an `input_text` (`plan_name`) and a status in another
+  `input_text` (`plan_status`): `none`, `planned` (file made, not yet on the printer),
+  `waiting` (accepted, waiting cold), `started` or `failed` (no confirmation within 15 minutes)
+- keep a print queue in a to-do list (`queue_todo`, for example a *Local To-do* list).
+  The dialog gets an *Add to queue* button; Start menu → PrintLater → *Plan next job from
+  the queue* opens the dialog for the first item and ticks it off once the job is accepted.
+  Sending still happens in Bambu Studio: the printer holds one job at a time.
+
+When Home Assistant is enabled but cannot be reached, or a configured entity does not exist,
+PrintLater does not plan: without it, it cannot check whether the printer is free. Set
+`continue_without_ha = true` to plan anyway.
+
+`homeassistant/printlater_status_queue_example.yaml` is an example package that keeps the
+status up to date after planning (waiting, started, failed when the plug goes off) and
+notifies you when a print finishes while the queue is not empty.
 
 The blueprint `homeassistant/printlater_delayed_start.yaml` detects a waiting job (running,
 stage idle, both target temperatures 0 for 45 s), keeps the chamber light off and can notify
@@ -105,6 +120,8 @@ console: its output goes to `printlater.log` in `%LOCALAPPDATA%\PrintLater`.
 ```text
 run.py plan <file.gcode.3mf>                          dialog (same as the right-click entry)
 run.py make <file.gcode.3mf> --at "YYYY-MM-DD HH:MM"  write the delayed file only
+run.py queue                                          show the print queue
+run.py next                                           dialog for the next job in the queue
 run.py check | set-token | install-menu | uninstall-menu
 ```
 
