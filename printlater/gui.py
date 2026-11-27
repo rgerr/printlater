@@ -91,12 +91,20 @@ def run(src: Path, settings: Settings, make_ha, target: datetime | None = None, 
     ttk.Radiobutton(f, text=L("m_warmup"), value="warmup", variable=meaning_v).grid(row=5, column=0, columnspan=3, sticky="w")
     ttk.Radiobutton(f, text=L("m_printing") + f" (≈{settings.timing.prep_minutes:g} min)", value="printing",
                     variable=meaning_v).grid(row=6, column=0, columnspan=3, sticky="w")
-    ttk.Label(f, text=L("bed"), foreground="#a33").grid(row=7, column=0, columnspan=3, sticky="w", pady=(8, 0))
+    total_s = core.print_seconds(info)
+    finish_rb = ttk.Radiobutton(f, text=L("m_finish", dur=_dur(total_s), margin=f"{settings.timing.finish_margin_minutes:g}"),
+                                value="finish", variable=meaning_v)
+    finish_rb.grid(row=7, column=0, columnspan=3, sticky="w")
+    if not total_s:
+        finish_rb.state(["disabled"])
+        if meaning_v.get() == "finish":
+            meaning_v.set("warmup")
+    ttk.Label(f, text=L("bed"), foreground="#a33").grid(row=8, column=0, columnspan=3, sticky="w", pady=(8, 0))
     status = tk.StringVar(value="")
-    ttk.Label(f, textvariable=status, wraplength=380, justify="left").grid(row=8, column=0, columnspan=3,
+    ttk.Label(f, textvariable=status, wraplength=380, justify="left").grid(row=9, column=0, columnspan=3,
                                                                          sticky="w", pady=(8, 0))
     btns = ttk.Frame(f)
-    btns.grid(row=9, column=0, columnspan=3, sticky="e", pady=(12, 0))
+    btns.grid(row=10, column=0, columnspan=3, sticky="e", pady=(12, 0))
     cancel_b = ttk.Button(btns, text=L("cancel"), command=root.destroy)
     cancel_b.pack(side="right")
     plan_b = ttk.Button(btns, text=L("plan"))
@@ -128,7 +136,7 @@ def run(src: Path, settings: Settings, make_ha, target: datetime | None = None, 
                     events.put(("error", L("offline", err=e)))
                     return
             plan = core.make_plan(src, target, settings, meaning=meaning)
-            planned_start = target - timedelta(seconds=plan.prep_s(settings))
+            planned_start = plan.warmup_planned
             if ha:
                 ha.set_plan("planned", plan.job_name, planned_start)
             was_open = winsys.studio_running()
@@ -153,7 +161,7 @@ def run(src: Path, settings: Settings, make_ha, target: datetime | None = None, 
                 minutes = int(elapsed // 60)
                 if minutes >= 2 and minutes > last_warn[0]:
                     last_warn[0] = minutes
-                    if_now = datetime.now() + timedelta(seconds=settings.timing.transfer_seconds + plan.delay_s)
+                    if_now = datetime.now() + timedelta(seconds=plan.transfer_s + plan.delay_s)
                     events.put(("late", L("late", min=minutes, name=plan.job_name,
                                           start=f"{if_now:%H:%M}", planned=f"{planned_start:%H:%M}")))
 
@@ -176,7 +184,10 @@ def run(src: Path, settings: Settings, make_ha, target: datetime | None = None, 
             if abs(dev) >= 30:
                 m, s = divmod(int(abs(dev)), 60)
                 dev_txt = L("dev", sign="+" if dev > 0 else "-", m=m, s=s)
-            events.put(("done", L("accepted", run=f"{running:%H:%M:%S}", start=f"{actual:%H:%M:%S}", dev=dev_txt)))
+            done = L("accepted", run=f"{running:%H:%M:%S}", start=f"{actual:%H:%M:%S}", dev=dev_txt)
+            if plan.meaning == "finish" and total_s:
+                done += "\n" + L("finish_eta", eta=f"{actual + timedelta(seconds=total_s):%H:%M}")
+            events.put(("done", done))
         except Exception as e:  # noqa: BLE001
             events.put(("error", str(e)))
 

@@ -8,10 +8,13 @@ language = ""            # "en" or "nl"; empty = follow Windows
 default_time = "07:30"   # suggested time in the dialog
 meaning = "warmup"       # "warmup": printer starts heating/homing at the chosen time
                          # "printing": first layer starts at the chosen time
+                         # "finish": print is done at the chosen time (Bambu's estimate)
 prep_minutes = 8         # printer preparation before the first layer (measured ~8 min on a P2S
                          # with filament load and auto levelling); only used for "printing"
+finish_margin_minutes = 10  # "finish": aim this much earlier, estimates can run over
 send_lead_seconds = 60   # expected time from closing the dialog to pressing Send
-transfer_seconds = 20    # Send -> printer starts running the file (15-25 s measured)
+transfer_seconds = 20    # Send -> printer starts running the file, files up to 10 MB (15-25 s)
+transfer_seconds_per_mb = 1.6  # extra per MB above 10 MB (a 74 MB file took ~125 s)
 
 [homeassistant]
 enabled = false          # optional; the token is stored with: run.py set-token

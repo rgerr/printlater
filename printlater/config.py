@@ -7,6 +7,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 APP = "PrintLater"
+MEANINGS = ("warmup", "printing", "finish")
 
 
 def data_dir() -> Path:
@@ -24,11 +25,14 @@ def config_path() -> Path:
 class Timing:
     default_time: str = "07:30"
     # What the chosen time means: "warmup" = printer starts heating/homing,
-    # "printing" = first layer starts (preparation time is subtracted).
+    # "printing" = first layer starts (preparation time is subtracted),
+    # "finish" = print is done (Bambu's estimated total time and a margin are subtracted).
     meaning: str = "warmup"
     prep_minutes: float = 8.0      # measured on a P2S with AMS load + auto levelling: ~8 min
+    finish_margin_minutes: float = 10.0  # "finish": aim this much earlier; estimates can run over
     send_lead_seconds: int = 60    # time from closing the dialog to pressing Send in Bambu Studio
-    transfer_seconds: int = 20     # Send -> printer starts running the file (measured 15-25 s)
+    transfer_seconds: int = 20     # Send -> printer runs the file, for files up to 10 MB (15-25 s)
+    transfer_seconds_per_mb: float = 1.6  # extra per MB above 10 MB (74 MB took ~125 s on a P2S)
 
 
 @dataclass
@@ -78,6 +82,6 @@ def load(path: Path | None = None) -> Settings:
         if k not in ("bambu_studio", "output_dir", "language"):
             raise ValueError(f"Unknown setting {k}")
         setattr(s, k, v)
-    if s.timing.meaning not in ("warmup", "printing"):
-        raise ValueError("timing.meaning must be 'warmup' or 'printing'")
+    if s.timing.meaning not in MEANINGS:
+        raise ValueError("timing.meaning must be 'warmup', 'printing' or 'finish'")
     return s

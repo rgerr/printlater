@@ -2,7 +2,7 @@
 
 Usage:
   run.py plan <file.gcode.3mf>                     open the dialog (also via right-click)
-  run.py make <file.gcode.3mf> --at "YYYY-MM-DD HH:MM" [--printing]
+  run.py make <file.gcode.3mf> --at "YYYY-MM-DD HH:MM" [--printing | --finish]
                                                           only write the delayed file
   run.py queue                                     show the print queue (Home Assistant to-do list)
   run.py next                                      open the dialog for the next job in the queue
@@ -90,7 +90,9 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("plan"); a.add_argument("file")
     m = sub.add_parser("make"); m.add_argument("file"); m.add_argument("--at", required=True)
-    m.add_argument("--printing", action="store_true", help="time means: first layer starts")
+    mm = m.add_mutually_exclusive_group()
+    mm.add_argument("--printing", action="store_true", help="time means: first layer starts")
+    mm.add_argument("--finish", action="store_true", help="time means: print is finished")
     for name in ("queue", "next", "set-token", "check", "install-menu", "uninstall-menu"):
         sub.add_parser(name)
 
@@ -115,7 +117,7 @@ def main(argv=None) -> int:
         if args.cmd == "make":
             d, t = args.at.split(" ", 1)
             plan = core.make_plan(Path(args.file).resolve(), core.parse_when(d, t), settings,
-                                  meaning="printing" if args.printing else None)
+                                  meaning="printing" if args.printing else "finish" if args.finish else None)
             _out(f"{plan.output}\ndelay {plan.delay_s} s; send it within about "
                  f"{settings.timing.send_lead_seconds} s from now")
             return 0

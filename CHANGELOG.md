@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0 (2026-11-27)
+
+- Third timing choice: *the print is finished*. The start is Bambu's estimated print time plus a
+  margin (`finish_margin_minutes`, default 10) before the chosen time; the file is named after the
+  real start, and the dialog shows the expected finish once the job is accepted.
+- `run.py make ... --finish` for the same on the command line.
+- Transfer time grows with file size (`transfer_seconds_per_mb`, 1.6 s per MB above 10 MB),
+  calibrated on a 74 MB file that took about 125 s from Send to running.
+
 ## 1.3.0 (2026-11-27)
 
 - After planning, the Bambu Studio window with the delayed file is maximized and brought to the

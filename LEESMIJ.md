@@ -17,7 +17,8 @@ instellingen blijven bewaard.
 
 1. Bambu Studio: slicen → pijltje naast *Printplaat* → **Exporteer plate sliced bestand**.
 2. Rechtsklik op het `.gcode.3mf` → **Print inplannen...** (Windows 11: eerst *Meer opties weergeven*).
-3. Kies datum, tijd en wat de tijd betekent: *de printer begint* (standaard) of *de eerste laag begint*.
+3. Kies datum, tijd en wat de tijd betekent: *de printer begint* (standaard), *de eerste laag begint*
+   of *de print klaar is* (op basis van de schatting van Bambu, met 10 minuten marge).
 4. Bambu Studio opent de kopie met wachtstart. Klik binnen ongeveer een minuut **Printplaat → Versturen**.
 
 De printer neemt de opdracht direct aan en wacht koud tot de starttijd. De pc mag daarna uit.

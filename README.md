@@ -55,6 +55,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 3. Pick the date and time and what the time means:
    - *the printer starts* (default): heating and homing begin at that time
    - *the first layer starts*: the preparation time (default 8 min) is subtracted
+   - *the print is finished*: Bambu's estimated print time and a 10 min margin are subtracted;
+     the estimate can be off on long prints, so the margin errs on finishing early
 4. Bambu Studio opens the delayed copy (`<name>_startHHMM.gcode.3mf`). Press **Print plate → Send**
    within about a minute. The printer accepts the job at once and shows it as printing while it waits.
 
@@ -63,6 +65,10 @@ Your computer can be switched off after sending; the printer does the waiting.
 To cancel, stop the job in Bambu Handy, Bambu Studio or on the printer.
 
 ## Timing
+
+Large files take longer to reach the printer: Bambu Studio uploads them and the printer downloads
+and unpacks them before it reports *running*. PrintLater adds `transfer_seconds_per_mb` (1.6 s) for
+every MB above 10 MB; a 74 MB file took about 125 s on a P2S, a 6 MB file about 20 s.
 
 The wait is counted from the moment the printer starts the file, which is 15 to 25 seconds after
 you press Send. The dialog assumes you send within `send_lead_seconds` (60 s). Sending later moves

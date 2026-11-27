@@ -351,3 +351,57 @@ def test_new_texts_format_in_both_languages():
         t = tr(lang, "late", min=2, name="x_start1300", start="13:06", planned="13:00")
         assert "13:06" in t and "13:00" in t and "x_start1300" in t
         assert "x_start1300.gcode.3mf" in tr(lang, "made", file="x_start1300.gcode.3mf")
+
+
+# ------------------------------------------------------------------ 1.4.0: finish-at, transfer time
+def test_finish_at_subtracts_estimate_and_margin(tmp_path):
+    from printlater import core
+    from printlater.config import Settings
+    s = Settings()
+    src = sliced_file(tmp_path / "pot.gcode.3mf")            # prediction 2257 s
+    now = datetime(2026, 11, 27, 9, 0, 0)
+    finish = datetime(2026, 11, 27, 13, 0, 0)
+    plan = core.make_plan(src, finish, s, meaning="finish", now=now)
+    lead = 2257 + 10 * 60
+    assert plan.lead_s == lead
+    assert plan.warmup_planned == finish - timedelta(seconds=lead)
+    expected = int((finish - now).total_seconds()) - s.timing.send_lead_seconds - plan.transfer_s - lead
+    assert plan.delay_s == expected
+    # the file is named after the real start time, so HA can read it from the task name
+    assert plan.output.name == f"pot_start{plan.warmup_planned:%H%M}.gcode.3mf"
+    g = zipfile.ZipFile(plan.output).read("Metadata/plate_1.gcode").decode()
+    assert "finish 13:00" in g
+
+
+def test_finish_needs_an_estimate(tmp_path):
+    from printlater import core, delay
+    from printlater.config import Settings
+    src = tmp_path / "x.gcode.3mf"
+    sliced_file(src)
+    with zipfile.ZipFile(src) as z:
+        items = {n: z.read(n) for n in z.namelist()}
+    items["Metadata/slice_info.config"] = items["Metadata/slice_info.config"].replace(
+        b'<metadata key="prediction" value="2257"/>', b"")
+    with zipfile.ZipFile(src, "w") as z:
+        for n, b in items.items():
+            z.writestr(n, b)
+    with pytest.raises(delay.DelayError):
+        core.make_plan(src, datetime.now() + timedelta(hours=5), Settings(), meaning="finish")
+
+
+def test_transfer_time_grows_with_file_size():
+    from printlater import core
+    from printlater.config import Settings
+    s = Settings()
+    assert core.transfer_seconds(6_000_000, s) == 20            # small: as measured (15-25 s)
+    assert 115 <= core.transfer_seconds(74_030_364, s) <= 135   # 74 MB Stone pot: ~125 s measured
+
+
+def test_config_rejects_unknown_meaning(tmp_path):
+    from printlater.config import load
+    p = tmp_path / "c.toml"
+    p.write_text('[timing]\nmeaning = "finish"\n')
+    assert load(p).timing.meaning == "finish"
+    p.write_text('[timing]\nmeaning = "later"\n')
+    with pytest.raises(ValueError):
+        load(p)
