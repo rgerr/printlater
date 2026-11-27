@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 (2026-11-27)
+
+- After planning, the Bambu Studio window with the delayed file is maximized and brought to the
+  front, and the dialog no longer stays on top of it.
+- The dialog shows the exact file it created and warns when Bambu Studio was already open (a new
+  Studio window is opened for the file).
+- When nothing has reached the printer after 2 minutes, the dialog says so every minute and shows
+  the start time you would get by sending now, so a late send is not a silent shift.
+
 ## 1.2.0 (2026-11-11)
 
 - Planning status in Home Assistant: job name (`plan_name`) and status (`plan_status`:

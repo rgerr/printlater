@@ -193,15 +193,23 @@ class HA:
         if self.cfg.queue_todo and uid:
             self.call("todo.update_item", {"entity_id": self.cfg.queue_todo, "item": uid, "status": "completed"})
 
-    def wait_for_job(self, job_name: str, timeout_s: int = 900, poll_s: int = 3) -> datetime | None:
+    def wait_for_job(self, job_name: str, timeout_s: int = 900, poll_s: int = 3,
+                     on_tick=None) -> datetime | None:
         """Wait until the printer runs a job whose name contains `job_name`.
-        Returns the local time it switched to 'running', or None on timeout."""
+        Returns the local time it switched to 'running', or None on timeout.
+        `on_tick(elapsed_s)` is called after every poll, e.g. to warn that nothing arrived yet."""
         c = self.cfg
         if not (c.print_status and c.task_name):
             return None
-        deadline = time.monotonic() + timeout_s
+        t0 = time.monotonic()
+        deadline = t0 + timeout_s
         key = job_name.lower()[:40]
         while time.monotonic() < deadline:
+            if on_tick:
+                try:
+                    on_tick(time.monotonic() - t0)
+                except Exception:  # noqa: BLE001 - a UI callback must not stop the wait
+                    pass
             try:
                 st = self.state(c.print_status)
                 task = self.value(c.task_name).lower()

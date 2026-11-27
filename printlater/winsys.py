@@ -111,6 +111,64 @@ def find_bambu_studio(configured: str = "") -> str | None:
     return None
 
 
+def studio_running() -> bool:
+    """True when a Bambu Studio process is already running (Windows only)."""
+    if not IS_WIN:
+        return False
+    try:
+        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq bambu-studio.exe", "/NH"],
+                             capture_output=True, text=True, timeout=10,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "bambu-studio.exe" in out.lower()
+
+
+def find_windows(title_part: str) -> list[int]:
+    """Handles of visible top-level windows whose title contains `title_part` (case-insensitive)."""
+    if not IS_WIN or not title_part:
+        return []
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    found: list[int] = []
+    key = title_part.lower()
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def cb(hwnd, _lparam):
+        if user32.IsWindowVisible(hwnd):
+            n = user32.GetWindowTextLengthW(hwnd)
+            if n:
+                buf = ctypes.create_unicode_buffer(n + 1)
+                user32.GetWindowTextW(hwnd, buf, n + 1)
+                if key in buf.value.lower():
+                    found.append(hwnd)
+        return True
+
+    user32.EnumWindows(cb, 0)
+    return found
+
+
+def bring_to_front(title_part: str, timeout_s: float = 90, poll_s: float = 1.0,
+                   exclude: frozenset[int] = frozenset()) -> bool:
+    """Wait for a window whose title contains `title_part`, then maximize it and bring it to the
+    front, so Print plate is clicked in the window that holds the delayed file. Windows in
+    `exclude` (already open before Studio was started) are skipped."""
+    if not IS_WIN:
+        return False
+    import time
+    user32 = ctypes.windll.user32
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        handles = [h for h in find_windows(title_part) if h not in exclude]
+        if handles:
+            hwnd = handles[0]
+            user32.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
+            user32.SetForegroundWindow(hwnd)
+            return True
+        time.sleep(poll_s)
+    return False
+
+
 def open_in_bambu_studio(file: Path, configured: str = "") -> None:
     exe = find_bambu_studio(configured)
     if exe:

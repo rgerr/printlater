@@ -317,3 +317,37 @@ def test_busy_message_names_task_and_plan(monkeypatch):
     msg = gui.busy_message(h, "running", lambda k, **kw: tr("nl", k, **kw), True)
     assert "running, zolder_mount" in msg and "vent_start0730, start 2026-11-12 07:30" in msg
     assert "In wachtrij" in msg
+
+
+def test_wait_for_job_reports_progress_and_times_out(monkeypatch):
+    from printlater import ha as ham
+    from printlater.config import HomeAssistant
+    cfg = HomeAssistant(enabled=True, print_status="sensor.x_status", task_name="sensor.x_task")
+    h = ham.HA(cfg, token="t")
+    fake = FakeHA([("idle", "unknown", "2026-11-27T07:51:58+00:00")])
+    monkeypatch.setattr(h, "state", fake.state)
+    monkeypatch.setattr(h, "value", fake.value)
+    ticks = []
+    assert h.wait_for_job("pot_start1300", timeout_s=0.05, poll_s=0.01, on_tick=ticks.append) is None
+    assert ticks and ticks == sorted(ticks)
+    # a failing callback must not break the wait
+    assert h.wait_for_job("pot_start1300", timeout_s=0.02, poll_s=0.01,
+                          on_tick=lambda _e: 1 / 0) is None
+
+
+def test_window_helpers_are_safe_off_windows():
+    from printlater import winsys
+    if winsys.IS_WIN:
+        pytest.skip("Windows-only behaviour is covered by the installer smoke test")
+    assert winsys.studio_running() is False
+    assert winsys.find_windows("anything") == []
+    assert winsys.bring_to_front("anything", timeout_s=0) is False
+
+
+def test_new_texts_format_in_both_languages():
+    from printlater.text import tr
+    for lang in ("en", "nl"):
+        assert "x_start1300" in tr(lang, "studio_open", name="x_start1300")
+        t = tr(lang, "late", min=2, name="x_start1300", start="13:06", planned="13:00")
+        assert "13:06" in t and "13:00" in t and "x_start1300" in t
+        assert "x_start1300.gcode.3mf" in tr(lang, "made", file="x_start1300.gcode.3mf")

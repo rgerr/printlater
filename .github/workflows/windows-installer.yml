@@ -70,6 +70,9 @@ jobs:
           python -c "import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); g = z.read('Metadata/plate_1.gcode').decode(); assert 'PRINTLATER DELAYED START' in g and 'M400 S90' in g; print('delay block present')" $out.FullName
           if ($LASTEXITCODE -ne 0) { throw "Delay block missing" }
 
+          python -c "from printlater import winsys; assert winsys.studio_running() is False; assert winsys.find_windows('zz-no-such-window-zz') == []; print('window helpers ok')"
+          if ($LASTEXITCODE -ne 0) { throw "Window helpers failed" }
+
           Start-Process "$env:LOCALAPPDATA\Programs\PrintLater\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait
           # the uninstaller relaunches itself from a temp copy, so -Wait returns early
           for ($i = 0; $i -lt 60 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 1 }

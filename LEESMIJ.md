@@ -25,6 +25,9 @@ Annuleren kan in Handy, Bambu Studio of op de printer.
 
 ## Let op
 
+- Verstuur vanuit het juiste venster: PrintLater zet het Studio-venster met het bestand met
+  wachtstart (titel eindigt op `_startHHMM`) vooraan. Was Studio al open, dan komt er een tweede
+  venster bij.
 - Het printbed moet op de starttijd leeg zijn.
 - De printer staat aan tijdens het wachten; verwarming, ventilatoren en motoren staan uit.
 - De kamerlamp is niet met G-code te bedienen: zet hem uit in Handy, of gebruik de

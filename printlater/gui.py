@@ -106,6 +106,7 @@ def run(src: Path, settings: Settings, make_ha, target: datetime | None = None, 
         queue_b.pack(side="right")
 
     events: queue.Queue = queue.Queue()
+    base_text = [""]  # status text before the late-send warning, so the warning replaces itself
 
     def connect():
         return connect_ha(settings, make_ha, L, lambda m: events.put(("status", m)))
@@ -130,13 +131,33 @@ def run(src: Path, settings: Settings, make_ha, target: datetime | None = None, 
             planned_start = target - timedelta(seconds=plan.prep_s(settings))
             if ha:
                 ha.set_plan("planned", plan.job_name, planned_start)
+            was_open = winsys.studio_running()
+            old_windows = frozenset(winsys.find_windows(plan.job_name))  # e.g. an earlier attempt
             winsys.open_in_bambu_studio(plan.output, settings.bambu_studio)
-            events.put(("status", L("made") + "\n" + L("send_now", lead=settings.timing.send_lead_seconds)))
+            msg = L("made", file=plan.output.name)
+            if was_open:
+                msg += "\n" + L("studio_open", name=plan.job_name)
+            events.put(("status", msg + "\n" + L("send_now", lead=settings.timing.send_lead_seconds)))
+            # let Studio come to the front: the dialog stays visible but no longer on top,
+            # and the Studio window with the delayed file is maximized and focused
+            events.put(("untop", None))
+            threading.Thread(target=winsys.bring_to_front, args=(plan.job_name,),
+                             kwargs={"exclude": old_windows}, daemon=True).start()
             if not ha:
                 events.put(("done", None))
                 return
             events.put(("status2", L("waiting")))
-            running = ha.wait_for_job(plan.job_name)
+            last_warn = [0]
+
+            def tick(elapsed: float) -> None:
+                minutes = int(elapsed // 60)
+                if minutes >= 2 and minutes > last_warn[0]:
+                    last_warn[0] = minutes
+                    if_now = datetime.now() + timedelta(seconds=settings.timing.transfer_seconds + plan.delay_s)
+                    events.put(("late", L("late", min=minutes, name=plan.job_name,
+                                          start=f"{if_now:%H:%M}", planned=f"{planned_start:%H:%M}")))
+
+            running = ha.wait_for_job(plan.job_name, on_tick=tick)
             if running is None:
                 try:
                     ha.set_plan("failed")
@@ -181,6 +202,11 @@ def run(src: Path, settings: Settings, make_ha, target: datetime | None = None, 
                     status.set(msg)
                 elif kind == "status2":
                     status.set(status.get() + "\n\n" + msg)
+                    base_text[0] = status.get()
+                elif kind == "late":
+                    status.set(base_text[0] + "\n\n" + msg)
+                elif kind == "untop":
+                    root.attributes("-topmost", False)
                 elif kind == "error":
                     messagebox.showerror(L("err"), msg, parent=root)
                     plan_b.state(["!disabled"])

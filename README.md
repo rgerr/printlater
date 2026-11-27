@@ -71,6 +71,10 @@ the exact expected start time once the printer has accepted it.
 
 ## Things to know
 
+- **Send from the right window.** PrintLater opens the delayed file in Bambu Studio and brings that
+  window to the front; its title ends in `_startHHMM`. If Studio was already open, a second Studio
+  window appears. Enabling *Keep only one Bambu Studio instance* in Studio's preferences avoids
+  that, but Studio then replaces the project that is open.
 - **The build plate must be empty** at the start time. The printer cannot check this.
 - The printer stays powered while it waits. Heaters, controllable fans and motors are off, but the
   power supply and mainboard (and one fan that G-code cannot control on some models) stay on.
