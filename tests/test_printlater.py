@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import subprocess
 import sys
 import zipfile
 from datetime import datetime, timedelta
@@ -405,3 +407,112 @@ def test_config_rejects_unknown_meaning(tmp_path):
     p.write_text('[timing]\nmeaning = "later"\n')
     with pytest.raises(ValueError):
         load(p)
+
+
+# ------------------------------------------------------------------ 1.5.0: projects, automatic send
+def project_file(path: Path, plates=((1, ""),), printer="Bambu Lab P2S") -> Path:
+    ms = "<config>" + "".join(
+        f'<plate><metadata key="plater_id" value="{i}"/><metadata key="plater_name" value="{n}"/></plate>'
+        for i, n in plates) + "</config>"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("3D/3dmodel.model", "<model/>")
+        z.writestr("Metadata/model_settings.config", ms)
+        z.writestr("Metadata/project_settings.config", json.dumps({"printer_model": printer}))
+    return path
+
+
+def test_project_detection_and_plates(tmp_path):
+    from printlater import project
+    pr = project_file(tmp_path / "pot.3mf", plates=((1, "80mm Insert"), (6, "120mm Stone"), (3, "120mm")))
+    assert not project.is_sliced(pr)
+    assert project.is_sliced(sliced_file(tmp_path / "x.gcode.3mf"))
+    plates = project.read_plates(pr)
+    assert [p.index for p in plates] == [1, 3, 6]
+    assert plates[-1].label() == "6: 120mm Stone"
+    assert project.output_name(pr, plates[-1], 3) == "pot_120mm_Stone.gcode.3mf"
+    single = project_file(tmp_path / "holder.3mf")
+    assert project.output_name(single, project.read_plates(single)[0], 1) == "holder.gcode.3mf"
+
+
+def test_project_for_other_printer_is_refused(tmp_path):
+    from printlater import project
+    pr = project_file(tmp_path / "pot.3mf", printer="Bambu Lab X1 Carbon")
+    project.check_printer(pr, "")                         # no expectation set: allowed
+    with pytest.raises(project.ProjectError, match="X1 Carbon"):
+        project.check_printer(pr, "Bambu Lab P2S")
+    project.check_printer(project_file(tmp_path / "ok.3mf"), "Bambu Lab P2S")
+
+
+def test_slice_command_line():
+    from printlater import project
+    cmd = project.slice_command(r"C:\Program Files\Bambu Studio\bambu-studio.exe", Path("C:/p/pot.3mf"), 6,
+                                Path("C:/tmp/x"), "pot_120mm_Stone.gcode.3mf")
+    assert cmd[1:7] == ["--slice", "6", "--outputdir", str(Path("C:/tmp/x")), "--export-3mf", "pot_120mm_Stone.gcode.3mf"]
+    assert cmd[-1] == str(Path("C:/p/pot.3mf"))
+
+
+def test_slice_project_runs_cli_and_fixes_model(tmp_path, monkeypatch):
+    from printlater import project
+    pr = project_file(tmp_path / "holder.3mf")
+
+    def fake_run(cmd, **kw):
+        outdir, name = Path(cmd[cmd.index("--outputdir") + 1]), cmd[cmd.index("--export-3mf") + 1]
+        f = sliced_file(outdir / name)
+        with zipfile.ZipFile(f) as z:                     # like the CLI: empty printer_model_id
+            items = {n: z.read(n) for n in z.namelist()}
+        items["Metadata/slice_info.config"] = items["Metadata/slice_info.config"].replace(b'value="N7"', b'value=""')
+        with zipfile.ZipFile(f, "w") as z:
+            for n, b in items.items():
+                z.writestr(n, b)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(project.subprocess, "run", fake_run)
+    out = project.slice_project(pr, project.read_plates(pr)[0], 1, "bambu-studio.exe", tmp_path)
+    assert out == tmp_path / "holder.gcode.3mf" and out.exists()
+    from printlater import sliced
+    assert sliced.read(out).printer_model == "N7"
+
+
+def test_slice_project_reports_failure(tmp_path, monkeypatch):
+    from printlater import project
+    pr = project_file(tmp_path / "holder.3mf")
+    monkeypatch.setattr(project.subprocess, "run",
+                        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 3, "", "boom\nplate 1 is empty"))
+    with pytest.raises(project.ProjectError, match="exit code 3"):
+        project.slice_project(pr, project.read_plates(pr)[0], 1, "bambu-studio.exe", tmp_path)
+    with pytest.raises(project.ProjectError, match="not found"):
+        project.slice_project(pr, project.read_plates(pr)[0], 1, "", tmp_path)
+
+
+def test_send_dialog_messages_skip_labels():
+    from printlater.autosend import messages_from
+    texts = ["Printer", "Filament", "2h47m", "105,53 g", "PEI plaat met ...", "Meerkleurig met externe",
+             "De printer is bezig met een andere printtaak.", "Kalibratie van Flow Dynam..."]
+    assert messages_from(texts) == ["De printer is bezig met een andere printtaak."]
+
+
+def test_autosend_off_windows():
+    from printlater import autosend, winsys
+    if winsys.IS_WIN:
+        pytest.skip("Windows behaviour is tested by hand")
+    assert autosend.send_via_studio("x").reason == "not_windows"
+
+
+def test_filament_details_and_state(tmp_path):
+    from printlater import sliced
+    from printlater.config import load_state, save_state
+    info = sliced.read(sliced_file(tmp_path / "x.gcode.3mf"))
+    f = info.plates[0].filament_details[0]
+    assert (f.slot, f.type, f.color) == ("1", "PETG", "#FFFFFF")
+    save_state(auto_send=True)
+    assert load_state()["auto_send"] is True
+    save_state(auto_send=False)
+    assert load_state()["auto_send"] is False
+
+
+def test_failure_reasons_have_texts():
+    from printlater.text import tr
+    for code in ("not_windows", "no_window", "no_print_button", "no_dialog", "send_disabled", "still_open"):
+        for lang in ("en", "nl"):
+            assert tr(lang, "r_" + code)

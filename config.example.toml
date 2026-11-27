@@ -3,6 +3,8 @@
 bambu_studio = ""        # path to bambu-studio.exe; empty = auto-detect
 output_dir = ""          # where delayed files are saved; empty = next to the original export
 language = ""            # "en" or "nl"; empty = follow Windows
+printer_model = ""       # e.g. "Bambu Lab P2S": projects set up for another printer are refused
+auto_send = false        # first-time default of the "Send automatically" box (then remembered)
 
 [timing]
 default_time = "07:30"   # suggested time in the dialog
@@ -30,5 +32,6 @@ planned_start = ""       # input_datetime.* receives the expected start time
 plan_name = ""           # input_text.* receives the name of the planned job
 plan_status = ""         # input_text.* receives: none, planned, waiting, started or failed
 queue_todo = ""          # todo.* list (e.g. Local To-do) used as print queue
+notify = ""              # notify.* service told when automatic send fails, e.g. notify.mobile_app_phone
 continue_without_ha = false  # true: still plan when Home Assistant cannot be reached (no busy check)
 boot_wait_seconds = 120

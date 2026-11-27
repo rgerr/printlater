@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0 (2026-11-27)
+
+- Plan straight from a saved project (`.3mf`): PrintLater slices the chosen plate with Bambu Studio's
+  command line, so the manual export step is gone. Plates are listed by their names. Projects set
+  up for another printer are refused when `printer_model` is set.
+- The empty `printer_model_id` that the command line writes is filled in for known printers (P2S).
+- Experimental: *Send automatically* presses Print plate and Send in the Bambu Studio window. The
+  file and its filaments are shown for a check first; on any problem the Studio window is left open
+  and an optional Home Assistant `notify` service gets a message. The choice is remembered.
+- `run.py make` takes a project with `--plate N`.
+
 ## 1.4.0 (2026-11-27)
 
 - Third timing choice: *the print is finished*. The start is Bambu's estimated print time plus a

@@ -13,11 +13,20 @@ class SlicedFileError(Exception):
 
 
 @dataclass
+class Filament:
+    slot: str        # filament number in the project (1, 2, ...)
+    type: str        # PLA, PETG, ...
+    color: str       # #RRGGBB
+    grams: float | None = None
+
+
+@dataclass
 class Plate:
     index: int
     seconds: int | None = None
     grams: float | None = None
     filaments: list[str] = field(default_factory=list)
+    filament_details: list[Filament] = field(default_factory=list)
 
 
 @dataclass
@@ -59,6 +68,10 @@ def read(path: Path) -> SlicedFile:
                     model = model or meta.get("printer_model_id")
                     plates[i].filaments = [f"{f.get('type', '?')} {f.get('color', '')}".strip()
                                            for f in p.findall("filament")]
+                    plates[i].filament_details = [
+                        Filament(f.get("id", "?"), f.get("type", "?"), (f.get("color") or "")[:7],
+                                 float(f.get("used_g")) if f.get("used_g") else None)
+                        for f in p.findall("filament")]
             except (ET.ParseError, ValueError):
                 pass
         head = z.read(f"Metadata/plate_{idx[0]}.gcode")[:400000].decode("utf-8", "replace")

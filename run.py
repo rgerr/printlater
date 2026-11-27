@@ -2,7 +2,7 @@
 
 Usage:
   run.py plan <file.gcode.3mf>                     open the dialog (also via right-click)
-  run.py make <file.gcode.3mf> --at "YYYY-MM-DD HH:MM" [--printing | --finish]
+  run.py make <file.gcode.3mf | project.3mf> --at "YYYY-MM-DD HH:MM" [--printing | --finish] [--plate N]
                                                           only write the delayed file
   run.py queue                                     show the print queue (Home Assistant to-do list)
   run.py next                                      open the dialog for the next job in the queue
@@ -20,7 +20,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from printlater import __version__, core, winsys
+from printlater import __version__, core, project, winsys
 from printlater.config import config_path, data_dir, load
 from printlater.ha import HA, save_token
 from printlater.text import tr
@@ -93,6 +93,7 @@ def main(argv=None) -> int:
     mm = m.add_mutually_exclusive_group()
     mm.add_argument("--printing", action="store_true", help="time means: first layer starts")
     mm.add_argument("--finish", action="store_true", help="time means: print is finished")
+    m.add_argument("--plate", type=int, default=0, help="plate number when FILE is a project (.3mf)")
     for name in ("queue", "next", "set-token", "check", "install-menu", "uninstall-menu"):
         sub.add_parser(name)
 
@@ -116,7 +117,18 @@ def main(argv=None) -> int:
             return 0
         if args.cmd == "make":
             d, t = args.at.split(" ", 1)
-            plan = core.make_plan(Path(args.file).resolve(), core.parse_when(d, t), settings,
+            src = Path(args.file).resolve()
+            if not project.is_sliced(src):        # a saved project: slice the plate first
+                plates = project.read_plates(src)
+                plate = next((x for x in plates if x.index == args.plate), None) if args.plate else plates[0]
+                if plate is None or (len(plates) > 1 and not args.plate):
+                    raise ValueError("Choose a plate with --plate: " + ", ".join(x.label() for x in plates))
+                project.check_printer(src, settings.printer_model)
+                dest = Path(settings.output_dir) if settings.output_dir else src.parent
+                src = project.slice_project(src, plate, len(plates),
+                                            winsys.find_bambu_studio(settings.bambu_studio) or "", dest)
+                _out(f"sliced: {src}")
+            plan = core.make_plan(src, core.parse_when(d, t), settings,
                                   meaning="printing" if args.printing else "finish" if args.finish else None)
             _out(f"{plan.output}\ndelay {plan.delay_s} s; send it within about "
                  f"{settings.timing.send_lead_seconds} s from now")

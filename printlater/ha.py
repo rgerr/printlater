@@ -147,6 +147,17 @@ class HA:
         if c.planned_flag:
             self.call(f"input_boolean.turn_{'on' if start else 'off'}", {"entity_id": c.planned_flag})
 
+    def notify(self, message: str, title: str = "PrintLater") -> bool:
+        """Send a message via the configured notify.* service. Returns False when none is set or it fails."""
+        svc = self.cfg.notify.strip()
+        if not svc.startswith("notify."):
+            return False
+        try:
+            self._req("POST", f"/api/services/notify/{svc.split('.', 1)[1]}", {"title": title, "message": message})
+            return True
+        except HAError:
+            return False
+
     def set_plan(self, status: str, name: str | None = None, start: datetime | None = None) -> None:
         """Publish the plan: status (see STATUSES), job name and expected start."""
         if status not in STATUSES:

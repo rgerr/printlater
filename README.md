@@ -50,7 +50,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 ## Use
 
-1. In Bambu Studio: slice, then use the arrow next to *Print plate* → **Export plate sliced file**.
+1. In Bambu Studio: slice, then use the arrow next to *Print plate* → **Export plate sliced file**
+   (or skip this and use a saved project, see below).
 2. Right-click the `.gcode.3mf` → **Print later...** (Windows 11: *Show more options* first).
 3. Pick the date and time and what the time means:
    - *the printer starts* (default): heating and homing begin at that time
@@ -61,6 +62,31 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
    within about a minute. The printer accepts the job at once and shows it as printing while it waits.
 
 Your computer can be switched off after sending; the printer does the waiting.
+
+### From a saved project
+
+You can also right-click a saved Bambu Studio project (`.3mf`) instead of an exported
+`.gcode.3mf`. PrintLater then slices the chosen plate with Bambu Studio's command line
+(`--slice N --export-3mf`) and continues as above.
+
+- Only what is saved is sliced. Unsaved changes in the Studio window are not included.
+- A project made for another printer (a download from MakerWorld often is) is refused when
+  `printer_model` is set in `config.toml`: open it in Studio, pick your printer and save it.
+- In tests on a P2S the command line gave the same layers, weight and time as a GUI export; tool paths
+  can differ in small details such as seam start points.
+
+### Automatic send (experimental)
+
+Tick **Send automatically** to let PrintLater press *Print plate* and *Send* in the Bambu Studio
+window that holds the delayed file. Bambu Studio does the sending, exactly as when you click
+yourself. Before sending, PrintLater shows the file and its filaments; Studio chooses the AMS slot
+for each filament itself, so check what is loaded or choose *Send myself*.
+
+PrintLater finds the buttons by their label, not by screen position, and stops when Studio does not
+offer *Send* (for example because the printer is busy). The Studio window is then left open for you
+and, with Home Assistant, a message goes to the `notify` service you set. A Bambu Studio update that
+renames or rebuilds these windows can break this; sending yourself always works. The box is
+remembered between plans.
 
 To cancel, stop the job in Bambu Handy, Bambu Studio or on the printer.
 
@@ -130,6 +156,7 @@ console: its output goes to `printlater.log` in `%LOCALAPPDATA%\PrintLater`.
 ```text
 run.py plan <file.gcode.3mf>                          dialog (same as the right-click entry)
 run.py make <file.gcode.3mf> --at "YYYY-MM-DD HH:MM"  write the delayed file only
+             [--printing | --finish] [--plate N]      (--plate: slice that plate of a project .3mf)
 run.py queue                                          show the print queue
 run.py next                                           dialog for the next job in the queue
 run.py check | set-token | install-menu | uninstall-menu

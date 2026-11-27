@@ -124,6 +124,22 @@ def studio_running() -> bool:
     return "bambu-studio.exe" in out.lower()
 
 
+def window_text(hwnd: int) -> str:
+    user32 = ctypes.windll.user32
+    n = user32.GetWindowTextLengthW(hwnd)
+    if not n:
+        return ""
+    buf = ctypes.create_unicode_buffer(n + 1)
+    user32.GetWindowTextW(hwnd, buf, n + 1)
+    return buf.value
+
+
+def window_class(hwnd: int) -> str:
+    buf = ctypes.create_unicode_buffer(256)
+    ctypes.windll.user32.GetClassNameW(hwnd, buf, 256)
+    return buf.value
+
+
 def find_windows(title_part: str) -> list[int]:
     """Handles of visible top-level windows whose title contains `title_part` (case-insensitive)."""
     if not IS_WIN or not title_part:
@@ -135,13 +151,8 @@ def find_windows(title_part: str) -> list[int]:
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def cb(hwnd, _lparam):
-        if user32.IsWindowVisible(hwnd):
-            n = user32.GetWindowTextLengthW(hwnd)
-            if n:
-                buf = ctypes.create_unicode_buffer(n + 1)
-                user32.GetWindowTextW(hwnd, buf, n + 1)
-                if key in buf.value.lower():
-                    found.append(hwnd)
+        if user32.IsWindowVisible(hwnd) and key in window_text(hwnd).lower():
+            found.append(hwnd)
         return True
 
     user32.EnumWindows(cb, 0)

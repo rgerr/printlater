@@ -49,6 +49,7 @@ class HomeAssistant:
     plan_name: str = ""            # input_text.* receives the name of the planned job (optional)
     plan_status: str = ""          # input_text.* receives none/planned/waiting/started/failed (optional)
     queue_todo: str = ""           # todo.* list used as print queue (optional)
+    notify: str = ""               # notify.* service told when automatic send fails (optional)
     continue_without_ha: bool = False  # True: plan anyway when Home Assistant cannot be reached
     boot_wait_seconds: int = 120
 
@@ -60,6 +61,8 @@ class Settings:
     bambu_studio: str = ""         # path to bambu-studio.exe; empty = auto-detect
     output_dir: str = ""           # where delayed files are written; empty = next to the source file
     language: str = ""             # "en" or "nl"; empty = follow Windows
+    printer_model: str = ""        # e.g. "Bambu Lab P2S": projects set up for another printer are refused
+    auto_send: bool = False        # first-time default of the "send automatically" box (then remembered)
 
 
 def _fill(obj, data: dict, section: str):
@@ -79,9 +82,28 @@ def load(path: Path | None = None) -> Settings:
     _fill(s.timing, raw.pop("timing", {}), "timing")
     _fill(s.homeassistant, raw.pop("homeassistant", {}), "homeassistant")
     for k, v in raw.items():
-        if k not in ("bambu_studio", "output_dir", "language"):
+        if k not in ("bambu_studio", "output_dir", "language", "printer_model", "auto_send"):
             raise ValueError(f"Unknown setting {k}")
         setattr(s, k, v)
     if s.timing.meaning not in MEANINGS:
         raise ValueError("timing.meaning must be 'warmup', 'printing' or 'finish'")
     return s
+
+
+def load_state() -> dict:
+    """Small remembered UI choices (e.g. the automatic-send box), kept next to the config."""
+    import json
+    try:
+        return json.loads((data_dir() / "state.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(**values) -> None:
+    import json
+    state = load_state()
+    state.update(values)
+    try:
+        (data_dir() / "state.json").write_text(json.dumps(state, indent=1), encoding="utf-8")
+    except OSError:
+        pass

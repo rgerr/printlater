@@ -24,6 +24,15 @@ instellingen blijven bewaard.
 De printer neemt de opdracht direct aan en wacht koud tot de starttijd. De pc mag daarna uit.
 Annuleren kan in Handy, Bambu Studio of op de printer.
 
+## Vanuit een project en automatisch versturen
+
+- Je kunt ook met rechts op een opgeslagen project (`.3mf`) klikken. PrintLater slicet de gekozen
+  plaat dan zelf met Bambu Studio. Alleen wat is opgeslagen wordt gesliced. Een project voor een
+  andere printer wordt geweigerd als `printer_model` in `config.toml` staat.
+- Met het vinkje *Automatisch versturen* klikt PrintLater zelf op Printplaat en Versturen in Bambu
+  Studio. Eerst zie je het bestand en het filament ter controle; Studio kiest zelf de AMS-sleuf.
+  Lukt het niet, dan blijft het Studio-venster staan en verstuur je zelf. Dit is experimenteel.
+
 ## Let op
 
 - Verstuur vanuit het juiste venster: PrintLater zet het Studio-venster met het bestand met
